@@ -36,16 +36,15 @@ void  * receiveData(void * argument);
 void  * checkTime(void * argument);
 void  * playData(void * argument);
 
+void setAlsaVolume(long volume);
+
+
+
 // declaration du semaphore
 sem_t semaph;
 
 // declaration de la fifo
 
-
-
-
-
-paramVolume = 1;
 
 //declaration mutex
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -370,6 +369,11 @@ void * playData(void * argument)
 	unsigned int popCounter = 0;
 	
 
+
+	setAlsaVolume(70);
+
+
+
 	while(1){
 		// semaphore --
 		sem_wait(&semaph);
@@ -434,16 +438,16 @@ void setAlsaVolume(long volume)
 	snd_mixer_t *handle;
 	snd_mixer_selem_id_t *sid;
 	const char *card = "default";
-	cons char *selem_name = "Master";
+	const char *selem_name = "Master";
 
 	snd_mixer_open(&handle, 0);
 	snd_mixer_attach(handle, card);
 	snd_mixer_selem_register(handle, NULL, NULL);
 	snd_mixer_load(handle);
 
-	snd_mixer_selem_id_alloc(&sid);
-	snd_mixer_selem_set_index(sid, 0);
-	snd_mixer_selem_set_name(sid, selem_name);
+	snd_mixer_selem_id_alloca(&sid);
+	snd_mixer_selem_id_set_index(sid, 0);
+	snd_mixer_selem_id_set_name(sid, selem_name);
 	snd_mixer_elem_t* elem = snd_mixer_find_selem(handle, sid);
 
 	snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
