@@ -30,7 +30,7 @@ using namespace std ;
 using easywsclient::WebSocket;
 
 static WebSocket::pointer wss = NULL;
-static std::string host = "ws://169.254.0.2:8126/speaker";
+static std::string host = "ws://localhost:8126/speaker";
 
 void  * receiveData(void * argument);
 void  * checkTime(void * argument);
@@ -50,8 +50,11 @@ sem_t semaph;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_time = PTHREAD_MUTEX_INITIALIZER;
 
-//declaration signaux
-pthread_cond_t  condition_var   = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex_cond = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_cond2 = PTHREAD_MUTEX_INITIALIZER;
+
+pthread_cond_t condition_var = PTHREAD_COND_INITIALIZER;
+pthread_cond_t condition_var2 = PTHREAD_COND_INITIALIZER;
 
 //definition de la structure d'une trame
 typedef struct trame{
@@ -61,23 +64,24 @@ typedef struct trame{
 }trame;
 
 queue<trame*> q;
+long int msglobal_sum = 0;
 
-
-struct timeval tp;
-long int ms;
-bool go = true;
+//long int ms;
+bool go = false;
 
 //declaration d'un pointeur sur le haut de mon allocation de memoire
 
 
-void handle_message(const std::vector<uint8_t>& message)
+void handle_binaryMessage(const std::vector<uint8_t>& message)
 {
 
 	unsigned int iFrame;
 	unsigned int nFrames;
 	long int sum = 0;
+	
 	nFrames = message.size() / (ROOTBUFFERSIZE+TIMESTAMPSIZE);
 
+	int aze = 0;
 	trame * ptr;
 
 	for (iFrame = 0; iFrame < nFrames; iFrame++) {
@@ -91,16 +95,19 @@ void handle_message(const std::vector<uint8_t>& message)
 			sum *= 10;
 			sum += ptr->timeStamp[j];
 		}
-
-
-		pthread_mutex_lock ( &mutex_time );
 		ptr->timeStamp_longint = sum;
-		pthread_mutex_unlock ( &mutex_time );
+		printf("sum = %lu\n", sum);
+
+		if(iFrame == 0){
+			msglobal_sum = sum;
+			pthread_cond_signal( &condition_var );
+		}
+
+
 		//printf("timeStamp of frame %u = %lu\n", iFrame, ptr->timeStamp_longint);
 
 		for (int k = 0; k < ROOTBUFFERSIZE; k++){
 			ptr->rootBuffer[k] = message[iFrame*(ROOTBUFFERSIZE+TIMESTAMPSIZE)+TIMESTAMPSIZE+k];
-			
 		}
 
 		// push pointer dans fifo
@@ -109,14 +116,15 @@ void handle_message(const std::vector<uint8_t>& message)
 		pthread_mutex_unlock( &mutex );
 
 		//printf("PUSH: %d: %p\n", iMessage, ptr);
+		
+	
+		// semaphore --
+		sem_post(&semaph);
 
-		// semaphore ++ 
-		sem_post(&semaph);		
 
 	}
 
 }
-
 
 
 int main()
@@ -125,7 +133,7 @@ int main()
     pthread_t t_receiveData, t_checkTime, t_playData ; // declare threads.
 
     pthread_create( &t_receiveData, NULL, receiveData,NULL); // create a thread running receiveData
-   // pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
+    pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
     pthread_create( &t_playData, NULL, playData,NULL); // create a thread running playData
  
 	// The pthread_create() call :
@@ -143,7 +151,7 @@ int main()
     // probably be terminated before it can finish. This is a BAD way to manage threads.
 
     pthread_join(t_receiveData, NULL);
-   // pthread_join(t_checkTime, NULL);
+    pthread_join(t_checkTime, NULL);
     pthread_join(t_playData, NULL);
 
     return 0;
@@ -158,8 +166,7 @@ void * receiveData(void * argument)
     
 	while (wss->getReadyState() != WebSocket::CLOSED) {
 		wss->poll();
-		wss->dispatchBinary(handle_message);
-
+		wss->dispatchBinary(handle_binaryMessage);
 	}
 	
 	delete wss;
@@ -167,18 +174,24 @@ void * receiveData(void * argument)
 }
 
 void * checkTime(void * argument){
-
 	
-	while(1){
+	pthread_cond_wait( &condition_var, &mutex_cond );
 
-		pthread_mutex_lock( &mutex_time );
+	struct timeval tp;
+	long int ms = 0;
+	while(1){
 		gettimeofday(&tp, NULL);
 		ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
-		printf("%lu\n", ms);
-		pthread_mutex_unlock( &mutex_time );
-		usleep(250);
+		//printf("ms = %lu\n", ms);
+		//printf("msglobal_sum = %lu\n", msglobal_sum);
+		if (ms == msglobal_sum){
+			printf("yolo les gars\n");
+			
+			//pthread_cond_signal( &condition_var2 );
+		}
+		usleep(245);
 	}
-	
+		
 	return 0;
 }
 
@@ -368,13 +381,18 @@ void * playData(void * argument)
 
 	unsigned int popCounter = 0;
 	
-
+	bool goo = 1;
+	struct timeval tp;
+	long int ms = 0;
 
 	setAlsaVolume(70);
 
-
+	// waiting for condition_var2 signal to play 
+	//pthread_cond_wait( &condition_var2, &mutex_cond2 );
 
 	while(1){
+		
+
 		// semaphore --
 		sem_wait(&semaph);
 		
@@ -383,16 +401,8 @@ void * playData(void * argument)
 			ptr = q.front();
 			//printf("POP: %d: %p\n", popCounter, ptr);
 			q.pop();
-		// unlock the mutex
 		pthread_mutex_unlock( &mutex );	
 		
-
-/*		pthread_mutex_lock ( &mutex_time );
-		if (ms == ptr->timeStamp_longint){
-			printf("yolllllllo\n********************************************");
-		}
-		pthread_mutex_unlock ( &mutex_time );
-*/
 		popCounter++;
 	    
 	    // allocate memory for the buffer that will be given to alsa
@@ -400,6 +410,17 @@ void * playData(void * argument)
 
 		// copy the data from websocket to a local buffer before to give it to asla
 		memcpy(buffer, (ptr->rootBuffer), sizeof(char) * size);
+
+
+		goo = 1;
+		while(goo){
+			gettimeofday(&tp, NULL);
+			ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+			if (ms == ptr->timeStamp_longint){
+				goo = 0;
+			}
+		}
+
 
 		// write the buffer to alsa to be played
 		rc = snd_pcm_writei(handle, buffer, frames);
