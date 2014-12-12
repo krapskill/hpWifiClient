@@ -30,7 +30,7 @@ using namespace std ;
 using easywsclient::WebSocket;
 
 static WebSocket::pointer wss = NULL;
-static std::string host = "ws://localhost:8126/speaker";
+static std::string host = "ws://169.254.0.2:8126/speaker";
 
 void  * receiveData(void * argument);
 void  * checkTime(void * argument);
@@ -41,6 +41,11 @@ sem_t semaph;
 
 // declaration de la fifo
 
+
+
+
+
+paramVolume = 1;
 
 //declaration mutex
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -121,7 +126,7 @@ int main()
     pthread_t t_receiveData, t_checkTime, t_playData ; // declare threads.
 
     pthread_create( &t_receiveData, NULL, receiveData,NULL); // create a thread running receiveData
-    pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
+   // pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
     pthread_create( &t_playData, NULL, playData,NULL); // create a thread running playData
  
 	// The pthread_create() call :
@@ -139,7 +144,7 @@ int main()
     // probably be terminated before it can finish. This is a BAD way to manage threads.
 
     pthread_join(t_receiveData, NULL);
-    pthread_join(t_checkTime, NULL);
+   // pthread_join(t_checkTime, NULL);
     pthread_join(t_playData, NULL);
 
     return 0;
@@ -366,11 +371,6 @@ void * playData(void * argument)
 	
 
 	while(1){
-
-		
-		
-
-		pthread_mutex_unlock( &mutex_time );
 		// semaphore --
 		sem_wait(&semaph);
 		
@@ -383,12 +383,12 @@ void * playData(void * argument)
 		pthread_mutex_unlock( &mutex );	
 		
 
-		pthread_mutex_lock ( &mutex_time );
+/*		pthread_mutex_lock ( &mutex_time );
 		if (ms == ptr->timeStamp_longint){
 			printf("yolllllllo\n********************************************");
 		}
 		pthread_mutex_unlock ( &mutex_time );
-
+*/
 		popCounter++;
 	    
 	    // allocate memory for the buffer that will be given to alsa
@@ -426,4 +426,31 @@ void * playData(void * argument)
  	snd_pcm_close(handle);
  	return 0;
 }
+
+
+void setAlsaVolume(long volume)
+{
+	long min, max;
+	snd_mixer_t *handle;
+	snd_mixer_selem_id_t *sid;
+	const char *card = "default";
+	cons char *selem_name = "Master";
+
+	snd_mixer_open(&handle, 0);
+	snd_mixer_attach(handle, card);
+	snd_mixer_selem_register(handle, NULL, NULL);
+	snd_mixer_load(handle);
+
+	snd_mixer_selem_id_alloc(&sid);
+	snd_mixer_selem_set_index(sid, 0);
+	snd_mixer_selem_set_name(sid, selem_name);
+	snd_mixer_elem_t* elem = snd_mixer_find_selem(handle, sid);
+
+	snd_mixer_selem_get_playback_volume_range(elem, &min, &max);
+	snd_mixer_selem_set_playback_volume_all(elem, volume * max/100);
+
+	snd_mixer_close(handle);
+
+}
+
 
