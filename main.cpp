@@ -421,7 +421,7 @@ void * playData(void * argument)
 			}
 		}
 
-
+		
 		// write the buffer to alsa to be played
 		rc = snd_pcm_writei(handle, buffer, frames);
 	/*
