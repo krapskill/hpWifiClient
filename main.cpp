@@ -30,7 +30,7 @@ using namespace std ;
 using easywsclient::WebSocket;
 
 static WebSocket::pointer wss = NULL;
-static std::string host = "ws://localhost:8126/speaker";
+static std::string host = "ws://169.254.0.2:8126/speaker";
 
 void  * receiveData(void * argument);
 void  * checkTime(void * argument);
@@ -420,8 +420,6 @@ void * playData(void * argument)
 				goo = 0;
 			}
 		}
-
-		
 		// write the buffer to alsa to be played
 		rc = snd_pcm_writei(handle, buffer, frames);
 	/*
