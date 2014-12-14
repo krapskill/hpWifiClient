@@ -58,6 +58,7 @@ pthread_cond_t condition_var2 = PTHREAD_COND_INITIALIZER;
 
 //definition de la structure d'une trame
 typedef struct trame{
+	int trameNumber;
 	char timeStamp[TIMESTAMPSIZE];
 	long long timeStamp_longint;
 	unsigned char rootBuffer[ROOTBUFFERSIZE];
@@ -84,7 +85,10 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 	int aze = 0;
 	trame * ptr;
 
+
+	printf("Data received\n");
 	for (iFrame = 0; iFrame < nFrames; iFrame++) {
+
 
 		ptr = (trame*) malloc(sizeof(trame));
 		sum = 0;
@@ -98,11 +102,12 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 		}
 		ptr->timeStamp_longint = sum;
 		//printf("sum = %llu\n", sum);
-		printf("ptr timestamp = %llu\n", ptr->timeStamp_longint);
+		//printf("ptr timestamp = %llu\n", ptr->timeStamp_longint);
 
 		if(iFrame == 0){
 			msglobal_sum = sum;
-			printf("globalsum = %lld\n", msglobal_sum);
+			printf("Storing datas\n");
+			printf("First timestamp = %lld\n", msglobal_sum);
 			pthread_cond_signal( &condition_var );
 		}
 
@@ -112,14 +117,20 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 			ptr->rootBuffer[k] = message[iFrame*(ROOTBUFFERSIZE+TIMESTAMPSIZE)+TIMESTAMPSIZE+k];
 		}
 
+		ptr->trameNumber = iFrame;
+
 		// push pointer dans fifo
 		pthread_mutex_lock( &mutex );
 		q.push(ptr);
 		pthread_mutex_unlock( &mutex );
 
 		//printf("PUSH: %d: %p\n", iMessage, ptr);
+
+		//when treating last frame, write in console that the data is stored
+		if (iFrame == nFrames-1){
+			printf("Datas stored \n");	
+		}
 		
-	
 		// semaphore --
 		sem_post(&semaph);
 	}
@@ -182,7 +193,7 @@ void * checkTime(void * argument){
 	while(1){
 		gettimeofday(&tp, NULL);
 		ms = (tp.tv_sec * 1000LL) + (tp.tv_usec / 1000) ;
-		printf("ms = %llu\n", ms);
+		//printf("ms = %llu\n", ms);
 		//printf("msglobal_sum = %llu\n", msglobal_sum);
 		if (ms == msglobal_sum){
 
@@ -385,14 +396,11 @@ void * playData(void * argument)
 	struct timeval tp;
 	long long ms = 0;
 
-//	setAlsaVolume(70);
-
 	// waiting for condition_var2 signal to play 
 	pthread_cond_wait( &condition_var2, &mutex_cond2 );
 
 	while(1){
 		
-
 		// semaphore --
 		sem_wait(&semaph);
 		
@@ -403,7 +411,7 @@ void * playData(void * argument)
 			q.pop();
 		pthread_mutex_unlock( &mutex );	
 		
-		popCounter++;
+		//popCounter++;
 	    
 	    // allocate memory for the buffer that will be given to alsa
 		buffer = (char *) malloc(sizeof(char) * size);
@@ -413,16 +421,17 @@ void * playData(void * argument)
 
 
 		goo = 1;
-//		printf("before the while\n******************************\n***************\n");
+
 		while(goo){
-		//printf("into the while\n");
 			gettimeofday(&tp, NULL);
 			ms = ((tp.tv_sec)*1000LL) + ((tp.tv_usec)/1000);
-			//printf("ms in the while = %llu", ms);
 			if(ms >= ptr->timeStamp_longint){
 				goo = 0;
-//				printf("yolo 2 les gars");
 			}
+		}
+
+		if(ptr->trameNumber == 0){
+			printf("start playing\n");
 		}
 		// write the buffer to alsa to be played
 		rc = snd_pcm_writei(handle, buffer, frames);
