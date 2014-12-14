@@ -36,7 +36,7 @@ void  * receiveData(void * argument);
 void  * checkTime(void * argument);
 void  * playData(void * argument);
 
-void setAlsaVolume(long volume);
+//void setAlsaVolume(long volume);
 
 
 
@@ -59,12 +59,12 @@ pthread_cond_t condition_var2 = PTHREAD_COND_INITIALIZER;
 //definition de la structure d'une trame
 typedef struct trame{
 	char timeStamp[TIMESTAMPSIZE];
-	long int  timeStamp_longint;
+	long long timeStamp_longint;
 	unsigned char rootBuffer[ROOTBUFFERSIZE];
 }trame;
 
 queue<trame*> q;
-long int msglobal_sum = 0;
+long long msglobal_sum = 0;
 
 //long int ms;
 bool go = false;
@@ -77,7 +77,7 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 
 	unsigned int iFrame;
 	unsigned int nFrames;
-	long int sum = 0;
+	long long sum = 0;
 	
 	nFrames = message.size() / (ROOTBUFFERSIZE+TIMESTAMPSIZE);
 
@@ -94,15 +94,17 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 			ptr->timeStamp[j] = ptr->timeStamp[j] & 0b00001111;
 			sum *= 10;
 			sum += ptr->timeStamp[j];
+		//	printf("sum temp = %llu\n", sum);
 		}
 		ptr->timeStamp_longint = sum;
-		printf("sum = %lu\n", sum);
+		//printf("sum = %llu\n", sum);
+		printf("ptr timestamp = %llu\n", ptr->timeStamp_longint);
 
 		if(iFrame == 0){
 			msglobal_sum = sum;
+			printf("globalsum = %lld\n", msglobal_sum);
 			pthread_cond_signal( &condition_var );
 		}
-
 
 		//printf("timeStamp of frame %u = %lu\n", iFrame, ptr->timeStamp_longint);
 
@@ -120,10 +122,8 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 	
 		// semaphore --
 		sem_post(&semaph);
-
-
 	}
-
+	pthread_cond_signal (&condition_var2);
 }
 
 
@@ -133,7 +133,7 @@ int main()
     pthread_t t_receiveData, t_checkTime, t_playData ; // declare threads.
 
     pthread_create( &t_receiveData, NULL, receiveData,NULL); // create a thread running receiveData
-    pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
+  //  pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
     pthread_create( &t_playData, NULL, playData,NULL); // create a thread running playData
  
 	// The pthread_create() call :
@@ -151,7 +151,7 @@ int main()
     // probably be terminated before it can finish. This is a BAD way to manage threads.
 
     pthread_join(t_receiveData, NULL);
-    pthread_join(t_checkTime, NULL);
+//    pthread_join(t_checkTime, NULL);
     pthread_join(t_playData, NULL);
 
     return 0;
@@ -178,18 +178,18 @@ void * checkTime(void * argument){
 	pthread_cond_wait( &condition_var, &mutex_cond );
 
 	struct timeval tp;
-	long int ms = 0;
+	long long ms = 0;
 	while(1){
 		gettimeofday(&tp, NULL);
-		ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
-		//printf("ms = %lu\n", ms);
-		//printf("msglobal_sum = %lu\n", msglobal_sum);
+		ms = (tp.tv_sec * 1000LL) + (tp.tv_usec / 1000) ;
+		printf("ms = %llu\n", ms);
+		//printf("msglobal_sum = %llu\n", msglobal_sum);
 		if (ms == msglobal_sum){
+
 			printf("yolo les gars\n");
-			
 			//pthread_cond_signal( &condition_var2 );
 		}
-		usleep(245);
+		//usleep(245);
 	}
 		
 	return 0;
@@ -383,12 +383,12 @@ void * playData(void * argument)
 	
 	bool goo = 1;
 	struct timeval tp;
-	long int ms = 0;
+	long long ms = 0;
 
-	setAlsaVolume(70);
+//	setAlsaVolume(70);
 
 	// waiting for condition_var2 signal to play 
-	//pthread_cond_wait( &condition_var2, &mutex_cond2 );
+	pthread_cond_wait( &condition_var2, &mutex_cond2 );
 
 	while(1){
 		
@@ -413,11 +413,15 @@ void * playData(void * argument)
 
 
 		goo = 1;
+//		printf("before the while\n******************************\n***************\n");
 		while(goo){
+		//printf("into the while\n");
 			gettimeofday(&tp, NULL);
-			ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
-			if (ms == ptr->timeStamp_longint){
+			ms = ((tp.tv_sec)*1000LL) + ((tp.tv_usec)/1000);
+			//printf("ms in the while = %llu", ms);
+			if(ms >= ptr->timeStamp_longint){
 				goo = 0;
+//				printf("yolo 2 les gars");
 			}
 		}
 		// write the buffer to alsa to be played
@@ -450,7 +454,7 @@ void * playData(void * argument)
  	return 0;
 }
 
-
+/*
 void setAlsaVolume(long volume)
 {
 	long min, max;
@@ -475,5 +479,5 @@ void setAlsaVolume(long volume)
 	snd_mixer_close(handle);
 
 }
-
+*/
 
