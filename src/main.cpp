@@ -95,8 +95,6 @@ queue<trame*> q;
 long long msglobal_sum = 0;
 
 
-//declaration d'un pointeur sur le haut de mon allocation de memoire
-
 
 void handle_binaryMessage(const std::vector<uint8_t>& message)
 {
@@ -107,10 +105,11 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 	
 	nFrames = message.size() / (ROOTBUFFERSIZE+TIMESTAMPSIZE);
 
+	// create a thread running checkTime
 	pthread_t t_checkTime;
-	pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
+	pthread_create( &t_checkTime, NULL, checkTime, NULL); 
 
-
+	// create a trame type struct called ptr 
 	trame * ptr;
 
 	std::cout << "message  size = " << message.size() / (ROOTBUFFERSIZE+TIMESTAMPSIZE) << '\n';
@@ -131,9 +130,10 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 		for (iFrame = 0; iFrame < nFrames; iFrame++) {
 
 			ptr = (trame*) malloc(sizeof(trame));
-		//	ptrRingBuffer = (ringBuffer*) malloc(sizeof(ringBuffer));
+		
 			sum = 0;
 			
+			// récupère les 13 premier octets correspondant au timestamp de la trame	
 			for (int j = 0; j < TIMESTAMPSIZE ; j++){
 				ptr->timeStamp[j] = message[iFrame*(ROOTBUFFERSIZE+TIMESTAMPSIZE)+j];
 				ptr->timeStamp[j] = ptr->timeStamp[j] & 0b00001111;
@@ -147,28 +147,25 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 
 			if(iFrame == 0){
 				msglobal_sum = sum;
-				printf("Storing datas\n");
+				printf("Storing datas...\n");
 				printf("First timestamp = %lld\n", msglobal_sum);
 				pthread_cond_signal( &condition_var );
 			}
 
-
+			// récupère les 2048 octets qui suivent le timestamp correspondant a la donnee a jouer
 			for (int k = 0; k < ROOTBUFFERSIZE; k++){
 				ptr->rootBuffer[k] = message[iFrame*(ROOTBUFFERSIZE+TIMESTAMPSIZE)+TIMESTAMPSIZE+k];
-				//ptrRingBuffer->buffer[k] = ptr->rootBuffer[k];
-				//testBuffer[k] = ptr->rootBuffer[k];
 			}
 			ptr->trameNumber = iFrame;
+
 			// push pointer dans fifo
+			// lock the mutex to get secure access to the queue
 			pthread_mutex_lock( &mutex );
 			if (iFrame < 20){
 				bufferWrite(ptr->rootBuffer);
 			}
 			q.push(ptr);
-			//qRing.push(ptrRingBuffer);
 			pthread_mutex_unlock( &mutex );
-
-			//printf("PUSH: %d: %p\n", iMessage, ptr);
 			
 			// semaphore --
 			sem_post(&semaph);
@@ -181,14 +178,13 @@ void handle_binaryMessage(const std::vector<uint8_t>& message)
 int main(int argc, char *argv[])
 {
  
-
+	// fonction qui demande a l'utilisateur de rentrer l'adresse IP du server
  	askingForIPAdress();
 
 
     pthread_t t_receiveData, t_checkTime, t_playData ; // declare threads.
 
     pthread_create( &t_receiveData, NULL, receiveData,NULL); // create a thread running receiveData
-   // pthread_create( &t_checkTime, NULL, checkTime, NULL); // create a thread running checkTime
     pthread_create( &t_playData, NULL, playData,NULL); // create a thread running playData
  
 	// The pthread_create() call :
@@ -231,6 +227,7 @@ void * receiveData(void * argument)
 
 void * checkTime(void * argument){
 	
+	//waiting for "mutex_cond" signal to continue processing
 	pthread_cond_wait( &condition_var, &mutex_cond );
 
 	struct timeval tp;
@@ -242,7 +239,6 @@ void * checkTime(void * argument){
 			printf("Time to play\n");
 			//stopFlag = 0;
 			startFlag = 1;
-			//pthread_cond_signal (&condition_var2);
 			// go out of the while(1) if it is time to play
 			break;
 		}
@@ -277,8 +273,7 @@ printf("end of initialising Alsa\n");
 
 
 	while(1){
-		// waiting for condition_var2 signal to play 
-		//pthread_cond_wait( &condition_var2, &mutex_cond2 );
+		
 		while(startFlag){	
 			// semaphore --
 			sem_wait(&semaph);
@@ -320,14 +315,15 @@ printf("end of initialising Alsa\n");
 			ringBufferCounter--;
 			//printf("ringBufferCounter = %u\n", ringBufferCounter);
 
+
+			// interpolation lineaire
 			for (int iFrame = 0 ; iFrame < 2048 ; iFrame+=2){
 				
 				float intPart = floor(count);
-				
-				float fracPart = count - intPart;
-				
+				float fracPart = count - intPart;				
 				unsigned int x0 = (unsigned int)intPart;
 				unsigned int x1 = x0 + 1;
+				
 				if(x1 == RINGBUFFERSIZE){
 					x1 = 0;
 				}
@@ -366,27 +362,6 @@ printf("end of initialising Alsa\n");
 				printf("start playing\n");
 			}
 
-			// write the buffer to alsa to be played
-			
-			
-		/*
-		    if (rc == -EPIPE) {
-		      // EPIPE means underrun //
-		      fprintf(stderr, "underrun occurred");
-		      snd_pcm_prepare(handle);
-		    } else if (rc < 0) {
-		      fprintf(stderr, "error from writei: %s",
-		              snd_strerror(rc));
-		    }  else if (rc != (int)frames) {
-		      fprintf(stderr, "short write, write %d frames", rc);
-		    }  else if (rc == -ESTRPIPE) {
-		      fprintf(stderr, "ESTRPIPE bro !! %d ", rc);
-		    }  else if (rc == -EBADFD) {
-		      fprintf(stderr, "EBADFD bro !! %d ", rc);
-		    }  else  {
-		      //fprintf(stderr, "yolo2 %d ", rc);
-		    }	
-		*/
 		    // free the pointer and buffer to get enough memory
 		    free(ptr);
 		    //free(ptrRingBuffer);
@@ -417,7 +392,7 @@ void askingForIPAdress(void){
  	char b []= ":8126/speaker";
  	char str [15];
 
-	printf ("Enter your family name: ");
+	printf ("Enter server IP adress: ");
   	scanf ("%15s",str);
   	
   	char full_name[33];
