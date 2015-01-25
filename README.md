@@ -25,7 +25,9 @@ Voilà quelques liens utiles pour apprendre à configurer le fichier en question
 LIGNES DE COMPILATION DU CODE : 
 
 >g++ -std==gnu++0x -c easywsclient.cpp -o easywsclient.o
+
 >g++ -std==gnu++0x -c main.cpp -o main.o
+
 >g++ main.o -pthread -lasound easywsclient.o -o monProgramme
 
 
