@@ -218,7 +218,7 @@ void * receiveData(void * argument)
     wss = WebSocket::from_url(host);
 	assert(wss);
 	std::ostringstream os;
-    
+    printf ("yolo\n");
 	while (wss->getReadyState() != WebSocket::CLOSED) {
 		wss->poll();
 		wss->dispatchBinary(handle_binaryMessage);
